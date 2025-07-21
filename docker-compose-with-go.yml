@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Python Flask Backend (original)
+  cimeika-app-python:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://cimeika_user:cimeika_pass@postgres:5432/cimeika_db
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - FLASK_ENV=${FLASK_ENV:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./static:/app/static
+    restart: unless-stopped
+    networks:
+      - cimeika-network
+    profiles:
+      - python
+
+  # Go Backend (alternative)
+  cimeika-app-go:
+    build: 
+      context: ./02_Development/Backend_Go
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://cimeika_user:cimeika_pass@postgres:5432/cimeika_db
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GOOGLE_CALENDAR_API_KEY=${GOOGLE_CALENDAR_API_KEY}
+      - DROPBOX_ACCESS_TOKEN=${DROPBOX_ACCESS_TOKEN}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - ASTROLOGY_API_KEY=${ASTROLOGY_API_KEY}
+      - HEALTH_API_KEY=${HEALTH_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/root/uploads
+      - ./logs:/root/logs
+      - ./static:/root/static
+    restart: unless-stopped
+    networks:
+      - cimeika-network
+    profiles:
+      - go
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=cimeika_db
+      - POSTGRES_USER=cimeika_user
+      - POSTGRES_PASSWORD=cimeika_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - cimeika-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cimeika_user -d cimeika_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - cimeika-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  cimeika-network:
+    driver: bridge
