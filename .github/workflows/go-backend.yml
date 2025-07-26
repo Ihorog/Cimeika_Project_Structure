@@ -1,0 +1,73 @@
+name: Go Backend CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - '02_Development/Backend_Go/**'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - '02_Development/Backend_Go/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Install dependencies
+      working-directory: ./02_Development/Backend_Go
+      run: go mod download
+    
+    - name: Verify dependencies
+      working-directory: ./02_Development/Backend_Go
+      run: go mod verify
+    
+    - name: Run vet
+      working-directory: ./02_Development/Backend_Go
+      run: go vet ./...
+    
+    - name: Build
+      working-directory: ./02_Development/Backend_Go
+      run: go build -v -o cimeika-backend cmd/main.go
+    
+    - name: Run tests
+      working-directory: ./02_Development/Backend_Go
+      run: go test -v ./...
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      working-directory: ./02_Development/Backend_Go
+      run: docker build . --file Dockerfile --tag cimeika-backend-go:${{ github.sha }}
+    
+    - name: Test Docker image
+      working-directory: ./02_Development/Backend_Go
+      run: |
+        docker run -d --name test-container -p 8080:8000 cimeika-backend-go:${{ github.sha }}
+        sleep 10
+        curl -f http://localhost:8080/health || exit 1
+        docker stop test-container
+        docker rm test-container
